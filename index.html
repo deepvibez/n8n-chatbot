@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShopEasy - E-Commerce Chatbot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .typing-dot {
+            animation: bounce 1.4s infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-blue-100 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm px-6 py-4 flex justify-between items-center sticky top-0 z-10">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg flex items-center justify-center text-white text-xl">
+                🛒
+            </div>
+            <h1 class="text-2xl font-bold text-blue-600">ShopEasy</h1>
+        </div>
+        <div class="flex gap-2 flex-wrap">
+            <button id="userInfoBtn" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                👤 <span id="userIdDisplay"></span>
+            </button>
+            <button id="newChatBtn" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                🔄 New Chat
+            </button>
+            <button id="clearBtn" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                🗑️ Clear
+            </button>
+        </div>
+    </header>
+
+    <!-- Messages Container -->
+    <div class="flex-1 overflow-y-auto px-4 py-6 max-h-[calc(100vh-180px)]">
+        <div class="max-w-4xl mx-auto" id="messagesContainer">
+            <!-- Welcome Screen -->
+            <div id="welcomeScreen" class="flex flex-col items-center justify-center text-center p-8 min-h-[60vh]">
+                <div class="w-24 h-24 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-5xl mb-6">
+                    🤖
+                </div>
+                <h2 class="text-3xl font-bold text-gray-900 mb-3">Welcome to ShopEasy!</h2>
+                <p class="text-lg text-gray-600 mb-8 max-w-md">
+                    Your AI-powered shopping assistant. Compare products, find deals, and discover bank offers.
+                </p>
+                <div class="flex flex-wrap gap-3 justify-center">
+                    <button class="quick-action px-4 py-2 border-2 border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors" data-message="Compare gaming laptops under 60000">
+                        Gaming Laptops
+                    </button>
+                    <button class="quick-action px-4 py-2 border-2 border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors" data-message="Show me best smartphones">
+                        Best Smartphones
+                    </button>
+                    <button class="quick-action px-4 py-2 border-2 border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors" data-message="Find deals on headphones">
+                        Headphone Deals
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="bg-white border-t border-gray-200 px-6 py-4 fixed bottom-0 left-0 right-0">
+        <div class="max-w-4xl mx-auto flex gap-3">
+            <div class="flex-1 flex items-center bg-blue-50 border-2 border-gray-200 rounded-xl px-4 focus-within:border-blue-500 transition-colors">
+                <input
+                    id="userInput"
+                    type="text"
+                    placeholder="Ask about products, compare prices, or find deals..."
+                    class="w-full bg-transparent border-0 outline-none py-3 text-gray-900"
+                />
+            </div>
+            <button
+                id="sendBtn"
+                class="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 rounded-xl flex items-center justify-center text-white transition-all disabled:opacity-50"
+            >
+                ➤
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="hidden fixed top-4 right-4 bg-gray-900 text-white px-6 py-3 rounded-lg shadow-lg z-50">
+        <p id="toastMessage"></p>
+    </div>
+
+    <script>
+        // ========== CONFIGURATION ==========
+        const WEBHOOK_URL = 'https://deeepjoshi.app.n8n.cloud/webhook/9fa300ae-18fb-4601-9c86-2874c7e71dc5';
+        // ===================================
+
+        let userId = '';
+        let sessionId = '';
+        let messages = [];
+        let isLoading = false;
+
+        // Initialize
+        function init() {
+            userId = localStorage.getItem('shopeasy_user_id');
+            if (!userId) {
+                userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('shopeasy_user_id', userId);
+            }
+
+            sessionId = localStorage.getItem('shopeasy_session_id');
+            if (!sessionId) {
+                sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('shopeasy_session_id', sessionId);
+            }
+
+            document.getElementById('userIdDisplay').textContent = userId.substr(-8);
+
+            const savedMessages = localStorage.getItem('shopeasy_chat_history');
+            if (savedMessages) {
+                messages = JSON.parse(savedMessages);
+                if (messages.length > 0) {
+                    document.getElementById('welcomeScreen').style.display = 'none';
+                    messages.forEach(msg => addMessageToUI(msg.text, msg.isUser, false));
+                }
+            }
+
+            // Event listeners
+            document.getElementById('sendBtn').addEventListener('click', sendMessage);
+            document.getElementById('userInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+            document.getElementById('clearBtn').addEventListener('click', clearChat);
+            document.getElementById('newChatBtn').addEventListener('click', startNewChat);
+            document.getElementById('userInfoBtn').addEventListener('click', showUserInfo);
+            
+            document.querySelectorAll('.quick-action').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const message = e.target.dataset.message;
+                    document.getElementById('userInput').value = message;
+                    sendMessage();
+                });
+            });
+        }
+
+        function addMessageToUI(text, isUser, save = true) {
+            const container = document.getElementById('messagesContainer');
+            document.getElementById('welcomeScreen').style.display = 'none';
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `flex gap-3 mb-4 ${isUser ? 'flex-row-reverse' : ''}`;
+            
+            msgDiv.innerHTML = `
+                <div class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
+                    isUser ? 'bg-gradient-to-br from-orange-400 to-orange-600' : 'bg-gradient-to-br from-blue-500 to-blue-700'
+                }">
+                    ${isUser ? 'U' : '🤖'}
+                </div>
+                <div class="max-w-[70%] px-4 py-3 rounded-2xl ${
+                    isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+                }">
+                    <div class="leading-relaxed whitespace-pre-wrap break-words">${formatMessage(text)}</div>
+                </div>
+            `;
+            
+            container.appendChild(msgDiv);
+            container.scrollTop = container.scrollHeight;
+
+            if (save) {
+                messages.push({ text, isUser, timestamp: Date.now() });
+                if (messages.length > 50) messages = messages.slice(-50);
+                localStorage.setItem('shopeasy_chat_history', JSON.stringify(messages));
+            }
+        }
+
+        function showTyping() {
+            const container = document.getElementById('messagesContainer');
+            const typingDiv = document.createElement('div');
+            typingDiv.id = 'typingIndicator';
+            typingDiv.className = 'flex gap-3 mb-4';
+            typingDiv.innerHTML = `
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white">
+                    🤖
+                </div>
+                <div class="bg-gray-100 px-4 py-3 rounded-2xl rounded-bl-sm">
+                    <div class="flex gap-1">
+                        <div class="w-2 h-2 bg-gray-500 rounded-full typing-dot"></div>
+                        <div class="w-2 h-2 bg-gray-500 rounded-full typing-dot"></div>
+                        <div class="w-2 h-2 bg-gray-500 rounded-full typing-dot"></div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(typingDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function hideTyping() {
+            const typing = document.getElementById('typingIndicator');
+            if (typing) typing.remove();
+        }
+
+        function formatMessage(text) {
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\n/g, '<br>');
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+            
+            if (!message || isLoading) return;
+
+            input.value = '';
+            isLoading = true;
+            document.getElementById('sendBtn').disabled = true;
+
+            addMessageToUI(message, true);
+            showTyping();
+
+            try {
+                const response = await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chatInput: message,
+                        userId: userId,
+                        sessionId: sessionId,
+                        timestamp: new Date().toISOString(),
+                        user: {
+                            name: 'User',
+                            browser: navigator.userAgent,
+                            language: navigator.language
+                        }
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                hideTyping();
+                
+                const botResponse = data.output || data.message || data.response || JSON.stringify(data);
+                addMessageToUI(botResponse, false);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                hideTyping();
+                addMessageToUI('Sorry, I encountered a connection error. Please try again.', false);
+                showToast('Connection error. Please check your internet.', true);
+            } finally {
+                isLoading = false;
+                document.getElementById('sendBtn').disabled = false;
+                input.focus();
+            }
+        }
+
+        function clearChat() {
+            if (confirm('Clear chat history?')) {
+                messages = [];
+                localStorage.removeItem('shopeasy_chat_history');
+                document.getElementById('messagesContainer').innerHTML = `
+                    <div id="welcomeScreen" class="flex flex-col items-center justify-center text-center p-8 min-h-[60vh]">
+                        <div class="w-24 h-24 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-5xl mb-6">🤖</div>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-3">Welcome to ShopEasy!</h2>
+                        <p class="text-lg text-gray-600 mb-8 max-w-md">Your AI-powered shopping assistant. Compare products, find deals, and discover bank offers.</p>
+                        <div class="flex flex-wrap gap-3 justify-center">
+                            <button class="quick-action px-4 py-2 border-2 border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors" data-message="Compare gaming laptops under 60000">Gaming Laptops</button>
+                            <button class="quick-action px-4 py-2 border-2 border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors" data-message="Show me best smartphones">Best Smartphones</button>
+                            <button class="quick-action px-4 py-2 border-2 border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors" data-message="Find deals on headphones">Headphone Deals</button>
+                        </div>
+                    </div>
+                `;
+                // Re-attach event listeners
+                document.querySelectorAll('.quick-action').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const message = e.target.dataset.message;
+                        document.getElementById('userInput').value = message;
+                        sendMessage();
+                    });
+                });
+                showToast('Chat cleared successfully');
+            }
+        }
+
+        function startNewChat() {
+            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('shopeasy_session_id', sessionId);
+            clearChat();
+            showToast('New conversation started');
+        }
+
+        function showUserInfo() {
+            alert(`👤 User ID: ${userId}\n💬 Session ID: ${sessionId}\n\nYour User ID is permanent and tracks your preferences.\nSession ID changes when you start a new conversation.`);
+        }
+
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            toastMessage.textContent = message;
+            toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${isError ? 'bg-red-600' : 'bg-gray-900'} text-white`;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        // Start app
+        init();
+    </script>
+</body>
+</html>
