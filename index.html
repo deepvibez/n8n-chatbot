@@ -244,7 +244,7 @@
                 const data = await response.json();
                 hideTyping();
                 
-                const botResponse = data.output || data.message || data.response || JSON.stringify(data);
+                const botResponse = data.output ;
                 addMessageToUI(botResponse, false);
                 
             } catch (error) {
